@@ -106,7 +106,6 @@ export default function LandingAuthPage() {
 
     try {
       if (isRegister) {
-        // --- ตรวจสอบความถูกต้องก่อนสมัครสมาชิก ---
         if (password !== confirmPassword) {
           throw new Error('รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน');
         }
@@ -117,7 +116,7 @@ export default function LandingAuthPage() {
 
         let isRegisteredSuccessfully = false;
 
-        // ขั้นที่ 1: พยายามสมัครผ่าน Server API Route เพื่อ Bypass Email Rate Limit
+        // ขั้นที่ 1: ลงทะเบียนผ่าน Server API Route เพื่อ Bypass Email Rate Limit
         try {
           const apiRes = await fetch('/api/register', {
             method: 'POST',
@@ -141,7 +140,6 @@ export default function LandingAuthPage() {
             throw new Error(apiData.error);
           }
         } catch (apiErr: any) {
-          // หากเกิด Error เฉพาะทางให้โยนออกไปแจ้งเตือน
           if (!apiErr.message?.includes('MISSING_SERVICE_ROLE_KEY') && !apiErr.message?.includes('Failed to fetch')) {
             throw apiErr;
           }
@@ -216,22 +214,21 @@ export default function LandingAuthPage() {
           if (profileUpsertError) throw profileUpsertError;
         }
 
-        // ขั้นที่ 3: สั่ง Sign In ทันที เพื่อสร้าง Session ให้อัตโนมัติ
+        // ขั้นที่ 3: สั่ง Sign In ทันที เพื่อสร้าง Session ให้ผู้ใช้งาน
         const { error: autoLoginError } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password: password,
         });
 
         if (autoLoginError) {
-          // หากยังไม่เข้า ให้ผู้ใช้สลับหน้าไปล็อกอินเอง
-          setSuccessMessage('สร้างบัญชีสำเร็จแล้ว! กำลังสลับไปหน้าเข้าสู่ระบบ...');
+          setSuccessMessage('สร้างบัญชีสำเร็จแล้ว กำลังสลับไปหน้าเข้าสู่ระบบ...');
           setTimeout(() => {
             setIsRegister(false);
           }, 1000);
           return;
         }
 
-        setSuccessMessage('สร้างบัญชีสำเร็จ! กำลังนำท่านเข้าสู่ระบบ...');
+        setSuccessMessage('สร้างบัญชีสำเร็จ กำลังนำท่านเข้าสู่ระบบ...');
         setTimeout(() => {
           router.push(registerRole === 'Band Manager' ? '/band' : '/practice');
         }, 700);
@@ -285,7 +282,6 @@ export default function LandingAuthPage() {
     }
   };
 
-  // แสดง Splash Screen ขณะตรวจ Session
   if (checkingSession) {
     return (
       <div className="min-h-screen w-full bg-[#08090D] flex flex-col items-center justify-center text-white">
@@ -303,7 +299,7 @@ export default function LandingAuthPage() {
 
       <div className="relative z-10 w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
         
-        {/* Onboarding Visual Card ฝั่งซ้าย */}
+        {/* Onboarding Visual Card ฝั่งซ้าย (ปรับข้อความกระชับและนำกรอบเทคนิคออก) */}
         <div className="hidden lg:flex lg:col-span-6 flex-col justify-between h-[680px] bg-[#10121A] border border-[#1E2230] rounded-[36px] p-8 sm:p-10 relative overflow-hidden shadow-2xl">
           <div 
             className="absolute inset-0 bg-cover bg-center opacity-40 mix-blend-luminosity scale-105"
@@ -334,36 +330,24 @@ export default function LandingAuthPage() {
             </div>
           </div>
 
-          {/* Hero Typography */}
-          <div className="relative z-10 space-y-6">
-            <div className="space-y-2">
+          {/* Hero Typography & Intro Description */}
+          <div className="relative z-10 space-y-4">
+            <div className="space-y-2.5">
               <div className="inline-flex items-center space-x-2 text-xs text-[#FF2E63] font-semibold tracking-wider uppercase">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Audio Expertise Engine</span>
+                <span>Smart Music Rehearsal Platform</span>
               </div>
               <h2 className="text-4xl font-extrabold tracking-tight leading-tight text-white">
-                Desires Come <br />
-                <span className="text-[#FF2E63]">Alive in Sound</span>
+                A.X.O.N. Improviso <br />
+                <span className="text-[#FF2E63]">Smart Music Assistant</span>
               </h2>
-              <p className="text-sm text-slate-400 font-light max-w-sm leading-relaxed pt-1">
-                ยกระดับการซ้อมดนตรีด้วยการวิเคราะห์ Onset Precision และ Tempo Stability ในกรอบความแม่นยำ ±100 ms
+              <p className="text-sm text-slate-300 font-light max-w-md leading-relaxed pt-1">
+                เว็บแอปพลิเคชันผู้ช่วยซ้อมดนตรีอัจฉริยะสำหรับนักดนตรีและวงดนตรี บันทึกการซ้อม วิเคราะห์ความแม่นยำของจังหวะและระดับเสียง พร้อมระบบติดตามสถิติพัฒนาการแบบครบวงจร
               </p>
             </div>
 
-            {/* Quick Metrics Tag */}
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <div className="p-3.5 bg-[#141722]/80 backdrop-blur-md border border-[#232838] rounded-2xl">
-                <span className="text-[11px] text-slate-400 block font-medium">Onset Tolerance</span>
-                <span className="text-sm font-bold text-white font-mono">±100 ms Sync</span>
-              </div>
-              <div className="p-3.5 bg-[#141722]/80 backdrop-blur-md border border-[#232838] rounded-2xl">
-                <span className="text-[11px] text-slate-400 block font-medium">Smart Highlights</span>
-                <span className="text-sm font-bold text-[#FF2E63] font-mono">Auto Clip Errors</span>
-              </div>
-            </div>
-
             {/* Pill Indicator */}
-            <div className="pt-2 flex items-center space-x-1.5">
+            <div className="pt-4 flex items-center space-x-1.5">
               <div className="w-6 h-1.5 bg-[#FF2E63] rounded-full" />
               <div className="w-1.5 h-1.5 bg-slate-700 rounded-full" />
               <div className="w-1.5 h-1.5 bg-slate-700 rounded-full" />
@@ -386,7 +370,7 @@ export default function LandingAuthPage() {
               <p className="text-xs text-slate-400 mt-1.5 font-light">
                 {isRegister 
                   ? 'กรอกข้อมูลเพื่อสร้างโปรไฟล์และเชื่อมต่อระบบห้องซ้อม' 
-                  : 'Access your account to manage settings, explore features'}
+                  : 'เข้าสู่ระบบเพื่อจัดการห้องซ้อมและติดตามสถิติการเล่น'}
               </p>
             </div>
 
@@ -408,7 +392,7 @@ export default function LandingAuthPage() {
             {/* Form Fields */}
             <form onSubmit={handleSubmit} className="space-y-4">
               
-              {/* ชื่อสำหรับ Sign Up */}
+              {/* ช่อง Full Name สำหรับ Sign Up */}
               {isRegister && (
                 <div>
                   <label className="text-xs text-slate-400 block mb-1.5 font-medium">ชื่อผู้ใช้งาน (Full Name)</label>
@@ -417,7 +401,7 @@ export default function LandingAuthPage() {
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="เช่น สมชาย ใจดี"
+                    placeholder="กรอกชื่อ-นามสกุลของคุณ"
                     className="w-full bg-[#171922] border border-[#262A36] rounded-2xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#FF2E63] transition shadow-inner"
                   />
                 </div>
@@ -429,9 +413,12 @@ export default function LandingAuthPage() {
                 <input
                   type="email"
                   required
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="jamesschleifer@gmail.com"
+                  onChange={(e) => setEmail(e.target.value.trim())}
+                  placeholder="name@example.com"
                   className="w-full bg-[#171922] border border-[#262A36] rounded-2xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#FF2E63] transition shadow-inner"
                 />
               </div>
@@ -443,9 +430,12 @@ export default function LandingAuthPage() {
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••••••"
+                    placeholder="กรอกรหัสผ่านอย่างน้อย 6 ตัวอักษร"
                     className="w-full bg-[#171922] border border-[#262A36] rounded-2xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#FF2E63] transition pr-11 shadow-inner"
                   />
                   <button
@@ -466,9 +456,12 @@ export default function LandingAuthPage() {
                     <input
                       type={showConfirmPassword ? 'text' : 'password'}
                       required
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="••••••••••••"
+                      placeholder="ยืนยันรหัสผ่านอีกครั้ง"
                       className="w-full bg-[#171922] border border-[#262A36] rounded-2xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#FF2E63] transition pr-11 shadow-inner"
                     />
                     <button
@@ -531,7 +524,7 @@ export default function LandingAuthPage() {
                         required
                         value={bandName}
                         onChange={(e) => setBandName(e.target.value)}
-                        placeholder="เช่น Bodyslam, The Parkinson"
+                        placeholder="ระบุชื่อวงดนตรีของคุณ"
                         className="w-full bg-[#171922] border border-[#262A36] rounded-2xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#FF2E63]"
                       />
                     </div>
@@ -545,7 +538,7 @@ export default function LandingAuthPage() {
                         type="text"
                         value={inviteCode}
                         onChange={(e) => setInviteCode(e.target.value)}
-                        placeholder="เช่น AXON-1234"
+                        placeholder="กรอกรหัสวงดนตรี (เช่น AXON-1234)"
                         className="w-full uppercase font-mono tracking-wider bg-[#171922] border border-[#262A36] rounded-2xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#FF2E63]"
                       />
                     </div>

@@ -20,6 +20,7 @@ import {
   Sparkles, 
   Music2,
   PlusCircle,
+  LogOut,
   X
 } from 'lucide-react';
 import { useUserRole } from '@/lib/useUserRole';
@@ -59,6 +60,10 @@ export default function BandOverviewPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newBandNameInput, setNewBandNameInput] = useState('');
   const [creatingBand, setCreatingBand] = useState(false);
+
+  // ระบบออกจากวงดนตรีสำหรับสมาชิก
+  const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
+  const [leavingBand, setLeavingBand] = useState(false);
 
   const roleTheme = isManager
     ? {
@@ -248,6 +253,29 @@ export default function BandOverviewPage() {
     }
   };
 
+  // สมาชิกกดออกจากวงดนตรีปัจจุบัน
+  const handleLeaveBand = async () => {
+    setLeavingBand(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('กรุณาเข้าสู่ระบบก่อนดำเนินการ');
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ band_id: null })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      setIsLeaveModalOpen(false);
+      window.location.reload();
+    } catch (err: any) {
+      alert(`ออกจากวงไม่สำเร็จ: ${err.message}`);
+    } finally {
+      setLeavingBand(false);
+    }
+  };
+
   const handleSendReport = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!managerReport.trim() || !bandId) return;
@@ -431,15 +459,26 @@ export default function BandOverviewPage() {
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {!isManager && (
-                  <button
-                    onClick={() => setIsCreateModalOpen(true)}
-                    className="flex items-center space-x-1 px-3 py-1.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 rounded-xl text-xs text-rose-300 font-medium transition"
-                  >
-                    <PlusCircle className="w-3.5 h-3.5 text-rose-400" />
-                    <span>สร้างวงใหม่ของฉัน</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setIsCreateModalOpen(true)}
+                      className="flex items-center space-x-1 px-3 py-1.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 rounded-xl text-xs text-rose-300 font-medium transition"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5 text-rose-400" />
+                      <span>สร้างวงใหม่</span>
+                    </button>
+
+                    <button
+                      onClick={() => setIsLeaveModalOpen(true)}
+                      className="flex items-center space-x-1 px-3 py-1.5 bg-red-950/70 hover:bg-red-900/90 border border-red-800/80 rounded-xl text-xs text-red-300 font-medium transition active:scale-95 shadow-sm"
+                      title="ออกจากสังกัดวงดนตรีปัจจุบัน"
+                    >
+                      <LogOut className="w-3.5 h-3.5 text-red-400" />
+                      <span>ออกจากวง</span>
+                    </button>
+                  </>
                 )}
 
                 <button
@@ -618,6 +657,53 @@ export default function BandOverviewPage() {
                 <span>ยืนยันสร้างวงและเป็น Manager</span>
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal ยืนยันการออกจากวงสำหรับสมาชิก */}
+      {isLeaveModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[#101422] border border-slate-800 rounded-3xl p-6 shadow-2xl text-center space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="w-14 h-14 rounded-2xl bg-red-950/80 border border-red-800/80 text-red-400 flex items-center justify-center mx-auto shadow-inner">
+              <LogOut className="w-7 h-7" />
+            </div>
+            
+            <div className="space-y-1.5">
+              <h3 className="text-base font-bold text-white tracking-tight">ยืนยันการออกจากวงดนตรี?</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                คุณต้องการออกจากสังกัดวง <span className="text-rose-300 font-semibold">"{bandName}"</span> หรือไม่?
+              </p>
+              <p className="text-[11px] text-slate-500">
+                *เมื่อออกแล้ว บัญชีจะกลับสู่โหมดซ้อมเดี่ยว (Solo Practicing Mode) และสามารถใช้รหัสเข้าวงใหม่ได้ตลอดเวลา
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-2.5 pt-2">
+              <button
+                type="button"
+                disabled={leavingBand}
+                onClick={() => setIsLeaveModalOpen(false)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold transition"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                disabled={leavingBand}
+                onClick={handleLeaveBand}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 disabled:bg-slate-800 text-white text-xs font-semibold transition flex items-center justify-center space-x-1.5 shadow-sm"
+              >
+                {leavingBand ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>กำลังออก...</span>
+                  </>
+                ) : (
+                  <span>ยืนยันออกจากวง</span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -24,7 +24,7 @@ import { supabase } from '@/lib/supabaseClient';
 export default function ProfilePage() {
   const router = useRouter();
   const { role, userName, userEmail, bandId, bandName, bandCode, instrument: defaultInst, isManager, loading } = useUserRole();
-  
+
   const [name, setName] = useState('');
   const [currentBandName, setCurrentBandName] = useState('');
   const [instrument, setInstrument] = useState('');
@@ -32,16 +32,20 @@ export default function ProfilePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // สถานะสำหรับรูปโปรไฟล์ (Avatar)
+  // สถานะการอัปโหลดรูปโปรไฟล์ (Avatar)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
-  // ป๊อปอัปสร้างวงใหม่สำหรับสมาชิกทั่วไป
+  // ป๊อปอัปสร้างวงดนตรีใหม่
   const [isCreateBandModalOpen, setIsCreateBandModalOpen] = useState(false);
   const [newBandNameInput, setNewBandNameInput] = useState('');
   const [creatingBand, setCreatingBand] = useState(false);
 
-  // กำหนดชุดสีตามบทบาท: Manager (สีแดง / Rose) vs Member (สีฟ้า / Sky Blue)
+  // ป๊อปอัปยืนยันการออกจากวงดนตรีสำหรับสมาชิก
+  const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
+  const [leavingBand, setLeavingBand] = useState(false);
+
+  // สไตล์ธีมตามบทบาท (Manager: Rose / Member: Sky Blue)
   const roleTheme = isManager
     ? {
         primaryBtn: 'bg-rose-600 hover:bg-rose-500 text-white shadow-sm',
@@ -67,7 +71,7 @@ export default function ProfilePage() {
     setCurrentBandName(bandId ? (bandName || '') : '');
     setInstrument(defaultInst || 'กลองชุด (Drums)');
 
-    // ดึงรูปโปรไฟล์เดิมของผู้ใช้จาก Supabase
+    // ดึงรูปโปรไฟล์จากฐานข้อมูล
     const fetchAvatar = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -79,6 +83,7 @@ export default function ProfilePage() {
             .select('avatar_url')
             .eq('id', user.id)
             .maybeSingle();
+
           if (profile?.avatar_url) {
             setAvatarUrl(profile.avatar_url);
           }
@@ -91,20 +96,20 @@ export default function ProfilePage() {
     fetchAvatar();
   }, [userName, bandName, bandId, defaultInst]);
 
-  // ฟังก์ชันอัปโหลดรูปโปรไฟล์ใหม่
+  // ฟังก์ชันอัปโหลดรูปโปรไฟล์เข้า Storage Bucket 'avatars'
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (file.size > 5 * 1024 * 1024) {
-      alert('ขนาดไฟล์รูปภาพต้องไม่เกิน 5 MB');
+      alert('รูปภาพต้องมีขนาดไม่เกิน 5 MB');
       return;
     }
 
     setUploadingAvatar(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('ไม่พบข้อมูลการเข้าสู่ระบบ');
+      if (!user) throw new Error('ไม่พบข้อมูลผู้ใช้งาน');
 
       const fileExt = file.name.split('.').pop() || 'jpg';
       const filePath = `avatars/${user.id}/${Date.now()}.${fileExt}`;
@@ -124,6 +129,7 @@ export default function ProfilePage() {
 
       setAvatarUrl(publicUrl);
 
+      // อัปเดตทั้งใน Auth Metadata และตาราง profiles
       await supabase.auth.updateUser({
         data: { avatar_url: publicUrl },
       });
@@ -136,15 +142,17 @@ export default function ProfilePage() {
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 2000);
     } catch (err: any) {
-      alert(`อัปโหลดรูปภาพไม่สำเร็จ: ${err.message}`);
+      alert(`อัปโหลดรูปไม่สำเร็จ: ${err.message}`);
     } finally {
       setUploadingAvatar(false);
     }
   };
 
+  // ฟังก์ชันบันทึกการแก้ไขโปรไฟล์
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -164,6 +172,7 @@ export default function ProfilePage() {
 
       if (profileError) throw profileError;
 
+      // กรณี Manager แก้ไขชื่อวง
       if (isManager && bandId && currentBandName.trim()) {
         const { error: bandError } = await supabase
           .from('bands')
@@ -176,13 +185,13 @@ export default function ProfilePage() {
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 2000);
     } catch (err: any) {
-      alert(`บันทึกไม่สำเร็จ: ${err.message}`);
+      alert(`บันทึกข้อมูลไม่สำเร็จ: ${err.message}`);
     } finally {
       setIsSaving(false);
     }
   };
 
-  // สร้างวงใหม่โดยตรงจากหน้า Profile
+  // ฟังก์ชันสร้างวงใหม่สำหรับสมาชิก (อัปเกรดเป็น Manager)
   const handleCreateBand = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBandNameInput.trim()) return;
@@ -226,6 +235,29 @@ export default function ProfilePage() {
     }
   };
 
+  // ฟังก์ชันออกจากวงดนตรีสำหรับสมาชิก
+  const handleLeaveBand = async () => {
+    setLeavingBand(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('ไม่พบข้อมูลผู้ใช้งาน');
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ band_id: null })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      setIsLeaveModalOpen(false);
+      window.location.reload();
+    } catch (err: any) {
+      alert(`ออกจากวงไม่สำเร็จ: ${err.message}`);
+    } finally {
+      setLeavingBand(false);
+    }
+  };
+
   const copyCode = () => {
     if (!bandCode || bandCode === '-') return;
     if (navigator.clipboard) {
@@ -253,12 +285,11 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen w-full bg-[#080b14] text-white flex flex-col pb-24 md:pb-10">
       <TopHeader />
-      
+
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-5">
         
-        {/* กล่องสรุปโปรไฟล์ผู้ใช้งาน */}
-        <div className="bg-[#0f1422] border border-slate-800 rounded-2xl p-5 flex flex-col sm:flex-row items-center text-center sm:text-left gap-4">
-          
+        {/* การ์ดสรุปข้อมูลโปรไฟล์ */}
+        <div className="bg-[#0f1422] border border-slate-800 rounded-2xl p-5 flex flex-col sm:flex-row items-center text-center sm:text-left gap-4 shadow-sm">
           <div className="relative group shrink-0">
             <div className={`w-20 h-20 rounded-full bg-slate-800 border-2 flex items-center justify-center text-2xl font-bold overflow-hidden relative ${roleTheme.avatarBorder}`}>
               {uploadingAvatar ? (
@@ -272,7 +303,7 @@ export default function ProfilePage() {
               <label
                 htmlFor="avatar-file-input"
                 className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center cursor-pointer transition-opacity"
-                title="คลิกเพื่อเปลี่ยนรูปโปรไฟล์"
+                title="เปลี่ยนรูปโปรไฟล์"
               >
                 <Camera className="w-5 h-5 text-white" />
                 <span className="text-[9px] text-slate-200 mt-0.5 font-medium">เปลี่ยนรูป</span>
@@ -305,7 +336,7 @@ export default function ProfilePage() {
                 {role}
               </span>
             </div>
-            
+
             <p className="text-xs text-slate-400 font-mono">{userEmail}</p>
 
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
@@ -321,10 +352,10 @@ export default function ProfilePage() {
                   type="button"
                   onClick={copyCode}
                   className={`text-xs border px-2.5 py-1 rounded-md flex items-center gap-1 transition ${roleTheme.tagBg}`}
-                  title="คัดลอกรหัสวง"
+                  title="คลิกเพื่อคัดลอกรหัสวง"
                 >
                   <Users className={`w-3.5 h-3.5 ${roleTheme.accentText}`} />
-                  <span>วง {currentBandName || bandName} {bandCode && bandCode !== '-' ? `(${bandCode})` : ''}</span>
+                  <span>วง: {currentBandName || bandName} {bandCode && bandCode !== '-' ? `(${bandCode})` : ''}</span>
                   {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 opacity-60" />}
                 </button>
               )}
@@ -332,15 +363,15 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* ฟอร์มแก้ไขข้อมูล */}
-        <div className="bg-[#0f1422] border border-slate-800 rounded-2xl p-5 sm:p-6">
+        {/* แบบฟอร์มแก้ไขข้อมูลส่วนตัว */}
+        <div className="bg-[#0f1422] border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm">
           <h2 className="text-sm font-bold text-slate-200 pb-3 border-b border-slate-800/80 mb-4">
-            แก้ไขข้อมูลส่วนตัว
+            ตั้งค่าข้อมูลบัญชีและเครื่องดนตรี
           </h2>
 
           <form onSubmit={handleSave} className="space-y-4">
             <div>
-              <label className="text-xs text-slate-400 block mb-1">ชื่อที่ใช้แสดง (Display Name)</label>
+              <label className="text-xs text-slate-400 block mb-1">ชื่อผู้ใช้งาน (Display Name)</label>
               <input
                 type="text"
                 required
@@ -354,19 +385,32 @@ export default function ProfilePage() {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs text-slate-400">
-                    {isManager ? 'ชื่อวงดนตรี (ผู้จัดการแก้ไขได้)' : 'สังกัดวงดนตรี'}
+                    {isManager ? 'ชื่อวงดนตรีของคุณ (Band Name)' : 'สังกัดวงดนตรี'}
                   </label>
                   {!isManager && (
-                    <button
-                      type="button"
-                      onClick={() => setIsCreateBandModalOpen(true)}
-                      className="text-[10px] text-rose-400 hover:underline flex items-center gap-1"
-                    >
-                      <PlusCircle className="w-3 h-3" />
-                      <span>สร้างวงใหม่ของฉัน</span>
-                    </button>
+                    <div className="flex items-center space-x-2">
+                      {bandId && (
+                        <button
+                          type="button"
+                          onClick={() => setIsLeaveModalOpen(true)}
+                          className="text-[10px] text-red-400 hover:text-red-300 hover:underline flex items-center gap-0.5"
+                        >
+                          <LogOut className="w-3 h-3" />
+                          <span>ออกจากวง</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setIsCreateBandModalOpen(true)}
+                        className="text-[10px] text-rose-400 hover:underline flex items-center gap-0.5"
+                      >
+                        <PlusCircle className="w-3 h-3" />
+                        <span>สร้างวงใหม่</span>
+                      </button>
+                    </div>
                   )}
                 </div>
+
                 {isManager && bandId ? (
                   <input
                     type="text"
@@ -379,7 +423,7 @@ export default function ProfilePage() {
                   <input
                     type="text"
                     disabled
-                    value={bandId ? (currentBandName || bandName) : 'ยังไม่มีสังกัดวง (ซ้อมเดี่ยว)'}
+                    value={bandId ? (currentBandName || bandName) : 'ยังไม่มีสังกัด (ซ้อมเดี่ยว)'}
                     className="w-full bg-slate-900/60 border border-slate-800 text-slate-400 rounded-xl px-3.5 py-2 text-xs cursor-not-allowed"
                   />
                 )}
@@ -444,10 +488,9 @@ export default function ProfilePage() {
             <span>ออกจากระบบ</span>
           </button>
         </div>
-
       </main>
 
-      {/* ป๊อปอัปสร้างวงใหม่ */}
+      {/* Modal สร้างวงดนตรีใหม่ */}
       {isCreateBandModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-[#101422] border border-slate-800 rounded-3xl p-6 shadow-2xl">
@@ -462,7 +505,7 @@ export default function ProfilePage() {
             </div>
             <form onSubmit={handleCreateBand} className="space-y-4">
               <div>
-                <label className="text-xs text-slate-400 block mb-1">ชื่อวงดนตรีใหม่ *</label>
+                <label className="text-xs text-slate-400 block mb-1">ชื่อวงดนตรีของคุณ *</label>
                 <input
                   type="text"
                   required
@@ -473,7 +516,7 @@ export default function ProfilePage() {
                 />
               </div>
               <p className="text-[11px] text-slate-400">
-                เมื่อสร้างวงใหม่แล้ว ระบบจะสร้างรหัสวงอัตโนมัติและเปลี่ยนบทบาทของคุณเป็นผู้จัดการวงทันที
+                เมื่อสร้างวงเสร็จสิ้น ระบบจะสร้างรหัสวงอัตโนมัติและปรับสถานะของคุณเป็นผู้จัดการวง (Band Manager) ทันที
               </p>
               <button
                 type="submit"
@@ -481,9 +524,56 @@ export default function ProfilePage() {
                 className="w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs shadow-sm transition flex items-center justify-center space-x-1.5"
               >
                 {creatingBand ? <Loader2 className="w-4 h-4 animate-spin" /> : <Crown className="w-4 h-4" />}
-                <span>ยืนยันสร้างวงและเป็น Manager</span>
+                <span>สร้างวงใหม่และเป็น Manager</span>
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal ยืนยันออกจากวง */}
+      {isLeaveModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[#101422] border border-slate-800 rounded-3xl p-6 shadow-2xl text-center space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="w-14 h-14 rounded-2xl bg-red-950/80 border border-red-800/80 text-red-400 flex items-center justify-center mx-auto shadow-inner">
+              <LogOut className="w-7 h-7" />
+            </div>
+            
+            <div className="space-y-1.5">
+              <h3 className="text-base font-bold text-white tracking-tight">ยืนยันการออกจากวงดนตรี?</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                คุณต้องการออกจากสังกัดวง <span className="text-rose-300 font-semibold">"{bandName}"</span> หรือไม่?
+              </p>
+              <p className="text-[11px] text-slate-500">
+                *บัญชีของคุณจะกลับเข้าสู่โหมดซ้อมเดี่ยวทันที โดยข้อมูลเพลงและประวัติการซ้อมเดิมจะไม่สูญหาย
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-2.5 pt-2">
+              <button
+                type="button"
+                disabled={leavingBand}
+                onClick={() => setIsLeaveModalOpen(false)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold transition"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                disabled={leavingBand}
+                onClick={handleLeaveBand}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 disabled:bg-slate-800 text-white text-xs font-semibold transition flex items-center justify-center space-x-1.5 shadow-sm"
+              >
+                {leavingBand ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>กำลังออก...</span>
+                  </>
+                ) : (
+                  <span>ยืนยันออกจากวง</span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
