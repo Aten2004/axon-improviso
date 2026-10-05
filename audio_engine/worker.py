@@ -26,27 +26,21 @@ FAILED_SONG_IDS = set()
 
 
 # ==============================================================================
-# 2. ฟังก์ชันแปลงชื่อเป็น ASCII ปลอดภัย 100% (แก้ InvalidKey)
+# 2. ฟังก์ชันแปลงชื่อเป็น ASCII และโหลดไฟล์เสียงชั่วคราว
 # ==============================================================================
 def make_safe_storage_folder(raw_name: str, song_id: str) -> str:
-    """
-    ดึงเฉพาะภาษาอังกฤษ ตัวเลข ขีดกลาง เพื่อให้ Supabase Storage ยอมรับ
-    หากเป็นชื่อภาษาไทยล้วน จะตั้งเป็น song_{song_id} เพื่อแยกโฟลเดอร์ไม่ให้ทับกัน
-    """
+    """แปลงชื่อภาษาไทย/อักขระพิเศษเป็น ASCII เพื่อให้ Supabase Storage บันทึกได้"""
     safe_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', raw_name)
     safe_name = re.sub(r'_+', '_', safe_name).strip('_')
-    
     if not safe_name:
         safe_name = "song"
-        
     return f"{safe_name[:25]}_{song_id[:8]}"
 
 
 def download_audio_to_temp_file(url: str) -> str:
     """
-    ดาวน์โหลดไฟล์เสียงจาก Supabase Storage และบันทึกลง Tempfile
-    พร้อมระบุนามสกุลไฟล์จริง เพื่อให้ Librosa ถอดรหัสไฟล์จากมือถือ (.m4a, .aac, .webm)
-    และเครื่องอื่นได้ทุกฟอร์แมต แก้ปัญหา 'Format not recognised'
+    ดาวน์โหลดไฟล์เสียงจาก Supabase Storage และบันทึกลง Tempfile พร้อมนามสกุลจริง
+    แก้ปัญหา 'Format not recognised' เมื่อโหลดไฟล์จากมือถือ (.m4a, .aac, .webm)
     """
     headers = {"User-Agent": "AXON-Separation-Worker/2.0"}
     resp = requests.get(url, headers=headers, timeout=90)
@@ -92,7 +86,6 @@ def process_song_separation(song: dict):
     raw_title = song.get("title") or "เพลงต้นฉบับ"
     band_id = song.get("band_id") or "common"
 
-    # สร้างชื่อโฟลเดอร์ที่เป็นภาษาอังกฤษและตัวเลข 100% ป้องกัน InvalidKey
     song_folder = make_safe_storage_folder(raw_title, song_id)
 
     print(f"\n=======================================================")
@@ -139,7 +132,7 @@ def process_song_separation(song: dict):
         y_kick_low = butter_filter(y_percussive, cutoff=150.0, sr=sr, btype='low')
         y_hihat_high = butter_filter(y_percussive, cutoff=3000.0, sr=sr, btype='high')
 
-        # 5. ชื่อไฟล์ทั้ง 7 แทร็กภายในโฟลเดอร์ของเพลงนั้นๆ
+        # 5. รวมไฟล์ทั้ง 7 แทร็ก
         tracks = {
             "1_original.wav": y,
             "2_harmonic.wav": y_harmonic,
@@ -188,7 +181,6 @@ def process_song_separation(song: dict):
         print(f"❌ เกิดข้อผิดพลาดในการประมวลผลเพลง: {e}")
         mark_song_failed(song_id)
     finally:
-        # ลบไฟล์ชั่วคราวทิ้งทันทีเมื่อประมวลผลเสร็จสิ้น
         if temp_path and os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
@@ -205,11 +197,11 @@ def mark_song_failed(song_id: str):
 
 
 # ==============================================================================
-# 4. ลูปหลักสำหรับมอนิเตอร์เฉพาะคิวงานแยกเสียงเพลง
+# 4. ลูปหลักสำหรับมอนิเตอร์คิวงานแยกเสียง
 # ==============================================================================
 def start_separation_worker():
     print("\n🎧 [A.X.O.N. Dedicated Audio Separation Worker]")
-    print("   • สถาปัตยกรรม: ทำงานร่วมกับ Supabase Cloud (รองรับคิวงานจากทุกอุปกรณ์)")
+    print("   • สถาปัตยกรรม: ทำงานร่วมกับ Supabase Cloud (รองรับคิวงานจากมือถือและทุกอุปกรณ์)")
     print("   • รูปแบบจัดเก็บ: แยกโฟลเดอร์ตามเพลงอย่างปลอดภัย (S3 Compliant)")
     print("   • ถังจัดเก็บ: Bucket 'song-references'")
     print("   กด Ctrl + C เพื่อหยุดการทำงาน\n")
