@@ -3,11 +3,13 @@ import sys
 import time
 import io
 import re
+import tempfile
 import requests
 import numpy as np
 import scipy.signal as signal
 import soundfile as sf
 import librosa
+from urllib.parse import urlparse
 from supabase import create_client, Client
 
 # ==============================================================================
@@ -40,13 +42,37 @@ def make_safe_storage_folder(raw_name: str, song_id: str) -> str:
     return f"{safe_name[:25]}_{song_id[:8]}"
 
 
-def download_audio_to_memory(url: str) -> io.BytesIO:
-    """ดาวน์โหลดไฟล์เสียงจาก Supabase Storage เข้า RAM โดยตรง ไม่บันทึกลง Disk"""
+def download_audio_to_temp_file(url: str) -> str:
+    """
+    ดาวน์โหลดไฟล์เสียงจาก Supabase Storage และบันทึกลง Tempfile
+    พร้อมระบุนามสกุลไฟล์จริง เพื่อให้ Librosa ถอดรหัสไฟล์จากมือถือ (.m4a, .aac, .webm)
+    และเครื่องอื่นได้ทุกฟอร์แมต แก้ปัญหา 'Format not recognised'
+    """
     headers = {"User-Agent": "AXON-Separation-Worker/2.0"}
-    resp = requests.get(url, headers=headers, timeout=60)
+    resp = requests.get(url, headers=headers, timeout=90)
     if resp.status_code != 200:
         raise FileNotFoundError(f"ดาวน์โหลดไฟล์ไม่สำเร็จ (HTTP Status: {resp.status_code}) URL: {url}")
-    return io.BytesIO(resp.content)
+
+    # ตรวจหานามสกุลไฟล์จริงจาก URL หรือ Content-Type
+    parsed = urlparse(url)
+    ext = os.path.splitext(parsed.path)[1].lower()
+    if not ext or ext not in ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.webm', '.flac']:
+        content_type = resp.headers.get("Content-Type", "").lower()
+        if "m4a" in content_type or "mp4" in content_type:
+            ext = ".m4a"
+        elif "webm" in content_type:
+            ext = ".webm"
+        elif "mpeg" in content_type or "mp3" in content_type:
+            ext = ".mp3"
+        else:
+            ext = ".wav"
+
+    tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+    tmp.write(resp.content)
+    tmp.flush()
+    temp_path = tmp.name
+    tmp.close()
+    return temp_path
 
 
 def butter_filter(data: np.ndarray, cutoff: float, sr: int, btype: str = 'low', order: int = 4) -> np.ndarray:
@@ -78,14 +104,14 @@ def process_song_separation(song: dict):
         mark_song_failed(song_id)
         return
 
+    temp_path = None
     try:
-        # 1. โหลดไฟล์เสียงต้นฉบับเข้า RAM Buffer
-        print("⏳ กำลังโหลดไฟล์เสียงเข้า RAM...")
-        audio_buffer = download_audio_to_memory(ref_url)
+        # 1. โหลดไฟล์เสียงต้นฉบับเข้า Tempfile รองรับไฟล์จากมือถือและเครื่องอื่นทุกชนิด
+        print("⏳ กำลังโหลดไฟล์เสียงเข้าเครื่อง...")
+        temp_path = download_audio_to_temp_file(ref_url)
 
-        # 2. ถอดรหัสสัญญาณเสียงผ่าน Librosa จาก RAM
-        y_raw, sr = librosa.load(audio_buffer, sr=TARGET_SR, mono=False)
-        audio_buffer.close()
+        # 2. ถอดรหัสสัญญาณเสียงผ่าน Librosa จาก Tempfile
+        y_raw, sr = librosa.load(temp_path, sr=TARGET_SR, mono=False)
 
         # จัดการมิติเสียง Stereo / Mid-Side เพื่อแยกเสียงร้องและดนตรีประกอบ
         if y_raw.ndim > 1 and y_raw.shape[0] >= 2:
@@ -161,6 +187,13 @@ def process_song_separation(song: dict):
     except Exception as e:
         print(f"❌ เกิดข้อผิดพลาดในการประมวลผลเพลง: {e}")
         mark_song_failed(song_id)
+    finally:
+        # ลบไฟล์ชั่วคราวทิ้งทันทีเมื่อประมวลผลเสร็จสิ้น
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
 
 
 def mark_song_failed(song_id: str):
@@ -176,7 +209,7 @@ def mark_song_failed(song_id: str):
 # ==============================================================================
 def start_separation_worker():
     print("\n🎧 [A.X.O.N. Dedicated Audio Separation Worker]")
-    print("   • สถาปัตยกรรม: ทำงานบน RAM 100% (ไม่มีการบันทึกไฟล์ลงฮาร์ดดิสก์)")
+    print("   • สถาปัตยกรรม: ทำงานร่วมกับ Supabase Cloud (รองรับคิวงานจากทุกอุปกรณ์)")
     print("   • รูปแบบจัดเก็บ: แยกโฟลเดอร์ตามเพลงอย่างปลอดภัย (S3 Compliant)")
     print("   • ถังจัดเก็บ: Bucket 'song-references'")
     print("   กด Ctrl + C เพื่อหยุดการทำงาน\n")
